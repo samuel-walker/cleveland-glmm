@@ -11,9 +11,9 @@
 #  Load libraries, load and clean data  #
 #########################################
 
-# Set working directory
+# Set working directory. Enter your own file path in the double quotation marks.
 
-setwd("C:/Users/Sam/Downloads/R/Output/") 
+setwd("") 
 
 # Load libraries
 
@@ -36,7 +36,7 @@ library(extrafont)
 # Load data from Github
 
 mydata = read.csv(text=getURL("https://raw.githubusercontent.com/samuel-walker/cleveland-glmm/master/LTDB_final.csv"), header = TRUE, fileEncoding = "UTF-8")
-mydata.full = read.csv("C:/Users/Sam/Downloads/R/LTDB_long.csv", header=TRUE, fileEncoding="UTF-8-BOM")
+mydata.full = read.csv(text=getURL("https://raw.githubusercontent.com/samuel-walker/cleveland-glmm/master/LTDB_long.csv"), header = TRUE, fileEncoding="UTF-8-BOM")
 
 # Overdispersion parameter estimation function from Ben Bolker: http://bbolker.github.io/mixedmodels-misc/glmmFAQ.html#testing-for-overdispersioncomputing-overdispersion-factor
 # Comment additions from http://ase.tufts.edu/gsc/gradresources/guidetomixedmodelsinr/mixed%20model%20guide.html
@@ -76,6 +76,24 @@ scaled.mydata <- na.omit(scaled.mydata)
 
 head(scaled.mydata)
 
+# TEMP
+
+library(plyr)
+
+head(mydata.full)
+
+scaled2.mydata <- ddply(mydata.full, c("decade"), transform, P_NONWHT = scale(P_NONWHT), 
+                                                        a_hinc = scale(a_hinc),
+                                                        P_UNEMP = scale(P_UNEMP),
+                                                        P_MANUF = scale(P_MANUF), 
+                                                        P_RENT = scale(P_RENT), 
+                                                        P_A60UP = scale(P_A60UP), 
+                                                        a_mhmval = scale(a_mhmval))
+
+scaled2.mydata <- na.omit(scaled2.mydata)
+
+head(scaled2.mydata)
+
 # Check missing values
 
 table(is.na(scaled.mydata)) 
@@ -88,6 +106,8 @@ detach(package:plyr)
 # Add ID variable for individual-level random effect later
 
 scaled.mydata$ID <- seq.int(nrow(scaled.mydata))
+
+scaled2.mydata$ID <- seq.int(nrow(scaled2.mydata))
 
 #########################################
 #    Visualizations before modelling    #
@@ -202,6 +222,35 @@ for (i in seq(1, length(unique(scaled.mydata$place_name)), 6)) {
 }
 dev.off()
 
+# Plots of dependent versus independent
+
+#mydata.full = read.csv("C:/Users/Sam/Downloads/R/LTDB_long.csv", header=TRUE, fileEncoding="UTF-8-BOM")
+ggplot(mydata.full, aes(P_NONWHT,R_VAC/HU))+
+  geom_point(aes(P_NONWHT,R_VAC/HU), size=0.5)+
+  geom_smooth(aes(P_NONWHT,R_VAC/HU))+
+  facet_grid(. ~ decade)+
+  labs(x = "Percent nonwhite population", y = "Percent vacant housing units by tract")+
+  scale_x_continuous(limits=c(0, 1), labels = scales::percent)+
+  scale_y_continuous(limits=c(0, 0.8), labels = scales::percent)+
+  theme_minimal()+
+  theme(text=element_text(family="Times New Roman", face="bold", size=12),
+        panel.spacing=unit(1,"lines"),
+        axis.text.x=element_text(angle=90,hjust=1,vjust=1))
+ggsave("race_vacancy.png")
+
+ggplot(mydata.full, aes(a_hinc*10000,R_VAC/HU))+
+  geom_point(aes(a_hinc*10000,R_VAC/HU), size=0.5)+
+  geom_smooth(aes(a_hinc*10000,R_VAC/HU))+
+  facet_grid(. ~ decade)+
+  labs(x = "Median household income (2010 constant dollars)", y = "Percent vacant housing units by tract")+
+  scale_x_continuous(limits=c(0, 199999),labels = scales::dollar)+ 
+  scale_y_continuous(limits=c(0, .75), labels = scales::percent)+
+  theme_minimal()+
+  theme(text=element_text(family="Times New Roman", face="bold", size=12),
+        panel.spacing=unit(1,"lines"),
+        axis.text.x=element_text(angle=90,hjust=1,vjust=1))
+ggsave("income_vacancy.png")
+
 #########################################
 #               Modelling               #
 #########################################
@@ -273,6 +322,21 @@ overdisp_fun(glmm.nb.place)
 overdisp_fun(glmm.nb.place.id)
 
 # Overdispersion not present in model with individual level random effect
+
+# Temp add other variables
+
+glmm.nb.place.id.2 <- glmer.nb(R_VAC ~ decade + P_UNEMP + P_MANUF + P_RENT + P_A60UP + a_mhmval + 
+                                 P_NONWHT * a_hinc + offset(HU_ln) + (1|ID) + (1|place_name/TRTID10), data = scaled2.mydata)
+
+anova(glmm.nb.place.id, glmm.nb.place.id.2)
+
+# Adding ID reduces AICC by a little bit
+
+# Check overdispersion
+
+overdisp_fun(glmm.nb.place.id.2)
+
+# Results?
 
 # Optimize model fit using allFit, see http://bbolker.github.io/mixedmodels-misc/glmmFAQ.html#troubleshooting
 
